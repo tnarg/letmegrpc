@@ -106,7 +106,8 @@ func (p *html) Generate(file *generator.FileDescriptor) {
 	httpPkg := p.NewImport("net/http")
 	p.jsonPkg = p.NewImport("encoding/json")
 	p.ioPkg = p.NewImport("io")
-	contextPkg := p.NewImport("golang.org/x/net/context")
+	p.NewImport("golang.org/x/net/context")
+	metadataPkg := p.NewImport("google.golang.org/grpc/metadata")
 	p.reflectPkg = p.NewImport("reflect")
 	p.stringsPkg = p.NewImport("strings")
 	p.strconvPkg = p.NewImport("strconv")
@@ -200,15 +201,18 @@ func (p *html) Generate(file *generator.FileDescriptor) {
 			p.P(`w.Write([]byte(Form`, servName, `_`, generator.CamelCase(m.GetName()), `))`)
 			p.P(`if someValue {`)
 			p.In()
+			p.P(`md := make(`, metadataPkg.Use(), `.MD)`)
+			p.P(`md["authorization"] = []string{req.Header.Get("Authorization")}`)
+			p.P(`ctx := `, metadataPkg.Use(), `.NewOutgoingContext(req.Context(), md)`)
 			if !m.GetClientStreaming() {
 				if !m.GetServerStreaming() {
-					p.P(`reply, err := this.client.`, generator.CamelCase(m.GetName()), `(`, contextPkg.Use(), `.Background(), msg)`)
+					p.P(`reply, err := this.client.`, generator.CamelCase(m.GetName()), `(ctx, msg)`)
 					p.writeError(errString)
 					p.P(`out, err := this.stringer(msg, reply)`)
 					p.writeError(errString)
 					p.P(`w.Write(out)`)
 				} else {
-					p.P(`down, err := this.client.`, generator.CamelCase(m.GetName()), `(`, contextPkg.Use(), `.Background(), msg)`)
+					p.P(`down, err := this.client.`, generator.CamelCase(m.GetName()), `(ctx, msg)`)
 					p.writeError(errString)
 					p.P(`for {`)
 					p.In()
@@ -223,7 +227,7 @@ func (p *html) Generate(file *generator.FileDescriptor) {
 				}
 			} else {
 				if !m.GetServerStreaming() {
-					p.P(`up, err := this.client.`, generator.CamelCase(m.GetName()), `(`, contextPkg.Use(), `.Background())`)
+					p.P(`up, err := this.client.`, generator.CamelCase(m.GetName()), `(ctx)`)
 					p.writeError(errString)
 					p.P(`err = up.Send(msg)`)
 					p.writeError(errString)
@@ -233,7 +237,7 @@ func (p *html) Generate(file *generator.FileDescriptor) {
 					p.writeError(errString)
 					p.P(`w.Write(out)`)
 				} else {
-					p.P(`bidi, err := this.client.`, generator.CamelCase(m.GetName()), `(`, contextPkg.Use(), `.Background())`)
+					p.P(`bidi, err := this.client.`, generator.CamelCase(m.GetName()), `(ctx)`)
 					p.writeError(errString)
 					p.P(`err = bidi.Send(msg)`)
 					p.writeError(errString)
