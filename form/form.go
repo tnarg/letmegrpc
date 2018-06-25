@@ -421,9 +421,59 @@ func isEnum(f *descriptor.FieldDescriptorProto) bool {
 	return f.GetType() == descriptor.FieldDescriptorProto_TYPE_ENUM
 }
 
+func findParentMessage(fds *descriptor.FileDescriptorSet, typeNames []string) *descriptor.DescriptorProto {
+	if typeNames == nil || len(typeNames) < 1 {
+		return nil
+	}
+	i := len(typeNames) - 1
+	pkgName := strings.Join(typeNames[1:i], ".")
+	msgName := typeNames[i]
+	msg := fds.GetMessage(pkgName, msgName)
+	for msg == nil {
+		i--
+		if i < 1 {
+			break
+		}
+		pkgName = strings.Join(typeNames[1:i], ".")
+		msgName = typeNames[i]
+		msg = fds.GetMessage(pkgName, msgName)
+		if msg == nil {
+			continue
+		}
+		msg = getNestedMessage(msg, typeNames[i+1:])
+	}
+	return msg
+}
+
+func getNestedMessage(parent *descriptor.DescriptorProto, names []string) *descriptor.DescriptorProto {
+	if names == nil || len(names) < 1 {
+		return parent
+	}
+	name := names[0]
+	for _, nested := range parent.GetNestedType() {
+		if nested.GetName() == name {
+			return getNestedMessage(nested, names[1:])
+		}
+	}
+	return nil
+}
+
 func getEnum(fileDescriptorSet *descriptor.FileDescriptorSet, f *descriptor.FieldDescriptorProto) *descriptor.EnumDescriptorProto {
 	typeNames := strings.Split(f.GetTypeName(), ".")
-	return fileDescriptorSet.GetEnum(typeNames[1], typeNames[2])
+	last := len(typeNames) - 1
+	pkgName := strings.Join(typeNames[1:last], ".")
+	msgName := typeNames[last]
+	enum := fileDescriptorSet.GetEnum(pkgName, msgName)
+	if enum == nil {
+		parent := findParentMessage(fileDescriptorSet, typeNames[:last])
+		for _, e := range parent.GetEnumType() {
+			if e.GetName() == msgName {
+				enum = e
+				break
+			}
+		}
+	}
+	return enum
 }
 
 func isFloat(f *descriptor.FieldDescriptorProto) bool {
@@ -450,9 +500,7 @@ func isNumber(f *descriptor.FieldDescriptorProto) bool {
 
 func getMessage(f *descriptor.FieldDescriptorProto, fileDescriptorSet *descriptor.FileDescriptorSet) *descriptor.DescriptorProto {
 	typeNames := strings.Split(f.GetTypeName(), ".")
-	messageName := typeNames[len(typeNames)-1]
-	packageName := strings.Join(typeNames[1:len(typeNames)-1], ".")
-	return fileDescriptorSet.GetMessage(packageName, messageName)
+	return findParentMessage(fileDescriptorSet, typeNames)
 }
 
 func BuilderMap(visited map[string]struct{}, fieldname string, repeated bool, msg *descriptor.DescriptorProto, fileDescriptorSet *descriptor.FileDescriptorSet) []string {
